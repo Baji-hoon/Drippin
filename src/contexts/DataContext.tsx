@@ -2,22 +2,29 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChange, getUserRatings, calculateUserStats } from '@/lib/supabase';
 import type { User, OutfitResult } from '@/lib/supabase';
+import type { OutfitResult } from '@/lib/types';
 
 // Define the shape of our cache
+// FIXED: Define a specific type for our user stats to replace 'any'
+interface UserStats {
+  totalRatings: number;
+  averageStyleScore: number;
+  averageColorScore: number;
+  styleFrequency: Record<string, number>;
+}
+// Update the context type to use our new UserStats interface
 interface DataContextType {
   user: User | null;
   ratings: OutfitResult[];
-  stats: any;
+  stats: UserStats | null; // Use the specific type here
   loading: boolean;
   addOptimisticRating: (newRating: OutfitResult) => void;
 }
-
 const DataContext = createContext<DataContextType | undefined>(undefined);
-
 export function DataProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ratings, setRatings] = useState<OutfitResult[]>([]);
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState<UserStats | null>(null); // Use the specific type here
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = useCallback(async () => {
@@ -46,19 +53,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription?.unsubscribe();
-  }, [fetchUserData]);
+  }, [fetchUserData]); // Added missing dependency
 
-  // FIXED: This function now updates both ratings and stats for a complete optimistic update.
-  const addOptimisticRating = (newRating: OutfitResult) => {
-    // 1. Create the new, updated list of ratings
-    const newRatings = [newRating, ...ratings];
-    
-    // 2. Immediately update the ratings state for the history page
-    setRatings(newRatings);
-    
-    // 3. Immediately recalculate and update the stats for the profile page
-    const newStats = calculateUserStats(newRatings);
-    setStats(newStats);
+  const addOptimisticRating = (rating: OutfitResult) => {
+    setRatings(prev => [rating, ...prev]);
   };
 
   const value = { user, ratings, stats, loading, addOptimisticRating };

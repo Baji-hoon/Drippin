@@ -1,7 +1,8 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Camera, Check, ArrowCounterClockwise, X } from 'phosphor-react';
+import { Check, ArrowCounterClockwise, X } from 'phosphor-react';
+import Image from 'next/image';
 
 export default function SnapPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function SnapPage() {
           videoRef.current.srcObject = stream;
         }
       } catch (err) {
+        console.error("Camera access error:", err);
         setError("Camera access was denied. Please enable camera permissions.");
       }
     } else {
@@ -30,9 +32,10 @@ export default function SnapPage() {
 
   useEffect(() => {
     startCamera();
+    const videoEl = videoRef.current; // Capture the ref value at effect run
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
+      if (videoEl && videoEl.srcObject) {
+        const stream = videoEl.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
       }
     };
@@ -83,8 +86,14 @@ export default function SnapPage() {
           // The container for both video and image to ensure consistent sizing
           <div className="absolute inset-0 flex items-center justify-center">
             {imageSrc ? (
-              // FIXED: Confirmation image is now large and fills the space
-              <img src={imageSrc} alt="Captured outfit" className="w-full h-full object-contain" />
+              <Image
+                src={imageSrc}
+                alt="Captured outfit"
+                fill
+                className="w-full h-full object-contain"
+                priority
+                unoptimized // Add this for data URLs
+              />
             ) : (
               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]"></video>
             )}

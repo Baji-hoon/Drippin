@@ -6,18 +6,7 @@ import { saveOutfitResult } from '@/lib/supabase';
 import { useData } from '@/contexts/DataContext';
 import { ArrowClockwise, Lightbulb } from 'phosphor-react';
 import toast from 'react-hot-toast';
-
-// Define interface for result
-interface OutfitResult {
-  imageUrl: string;
-  outfit_vibe: string;
-  look_score: number;
-  look_comment: string;
-  color_score: number;
-  color_comment: string;
-  suggestions?: string[];
-  observations?: string;
-}
+import type { OutfitResult, LocalOutfitResult } from '@/lib/types';
 
 const ResultCard = ({ title, score, comment }: { title: string, score?: number, comment: string }) => {
   if (!score) return null;
@@ -56,31 +45,34 @@ const SuggestionsCard = ({ suggestions }: { suggestions: string[] }) => {
 function ResultsComponent() {
   const router = useRouter();
   const { addOptimisticRating } = useData();
-  const [result, setResult] = useState<OutfitResult | null>(null);
+  const [result, setResult] = useState<LocalOutfitResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const storedResult = sessionStorage.getItem('outfitResult');
     if (storedResult) {
-      const parsedResult = JSON.parse(storedResult);
-      console.log('Loaded result:', parsedResult); // Debug: Log result
-      setResult(parsedResult);
+      try {
+        const parsedResult = JSON.parse(storedResult);
+        setResult(parsedResult);
+      } catch (e) {
+        console.error("Failed to parse result from session storage", e);
+        router.push('/');
+      }
     } else {
-      toast.error("No outfit data available.");
       router.push('/');
     }
   }, [router]);
-
-  const retry = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
-    for (let i = 0; i < retries; i++) {
-      try {
-        return await fn();
-      } catch (error) {
-        if (i === retries - 1) throw error;
-        await new Promise(resolve => setTimeout(resolve, delay * 2 ** i));
-      }
+const retry = async (fn: () => Promise<void>, retries = 3, delay = 1000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fn();
+      return;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay * 2 ** i));
     }
-  };
+  }
+};
 
   useEffect(() => {
     if (!result) return;
@@ -88,38 +80,27 @@ function ResultsComponent() {
     const saveResult = async () => {
       setIsSaving(true);
 
-      // Validate required fields
-      const requiredFields = ['imageUrl', 'outfit_vibe', 'look_score', 'look_comment', 'color_score', 'color_comment'];
-      const missingFields = requiredFields.filter(field => result[field as keyof OutfitResult] === undefined || result[field as keyof OutfitResult] === null);
-      if (missingFields.length > 0) {
-        console.error("Missing required fields:", missingFields);
-        toast.error(`Missing required fields: ${missingFields.join(', ')}`);
-        setIsSaving(false);
-        return;
-      }
-
-      // Validate imageUrl
-      if (!result.imageUrl || !result.imageUrl.startsWith('blob:') && !result.imageUrl.match(/^https?:\/\//)) {
-        console.error("Invalid imageUrl:", result.imageUrl);
-        toast.error("Invalid image URL. Please try again.");
-        setIsSaving(false);
-        return;
-      }
-
-      // Optimistic Update
-      const optimisticResult = {
+      // Create the optimistic result with proper typing
+      const optimisticResult: OutfitResult = {
         id: Date.now(),
-        ...result,
         image_url: result.imageUrl,
         created_at: new Date().toISOString(),
+        outfit_vibe: result.outfit_vibe,
+        look_score: result.look_score,
+        look_comment: result.look_comment,
+        color_score: result.color_score,
+        color_comment: result.color_comment,
+        suggestions: result.suggestions || [],
+        observations: result.observations || '',
       };
+
       addOptimisticRating(optimisticResult);
 
       // Background save with retry
       try {
         await retry(() =>
           saveOutfitResult({
-            imageUrl: result.imageUrl,
+            image_url: result.imageUrl,
             outfit_vibe: result.outfit_vibe,
             look_score: result.look_score,
             look_comment: result.look_comment,
@@ -127,17 +108,26 @@ function ResultsComponent() {
             color_comment: result.color_comment,
             suggestions: result.suggestions || [],
             observations: result.observations || '',
-            image_url: result.imageUrl,
           })
         );
         toast.success("Outfit saved successfully!");
-      } catch (error: any) {
+      } catch (error: unknown) {
+        let message = "Unknown error";
+        let code = "No code";
+        let details = "No details";
+        let stack = "No stack trace";
+        if (typeof error === "object" && error !== null) {
+          message = (error as { message?: string }).message ?? message;
+          code = (error as { code?: string }).code ?? code;
+          details = (error as { details?: string }).details ?? details;
+          stack = (error as { stack?: string }).stack ?? stack;
+        }
         console.error("Failed to save result in background:", {
           error: error, // Log raw error
-          message: error.message || "Unknown error",
-          code: error.code || "No code",
-          details: error.details || "No details",
-          stack: error.stack || "No stack trace",
+          message,
+          code,
+          details,
+          stack,
           result: result, // Log input data for debugging
         });
         toast.error("Failed to save outfit. It has been saved locally and will retry later.");
@@ -149,7 +139,7 @@ function ResultsComponent() {
     };
 
     saveResult();
-  }, [result]);
+  }, [addOptimisticRating, result]);
 
   if (!result) {
     return <div className="flex items-center justify-center h-screen bg-pastel-beige"><ArrowClockwise size={48} className="animate-spin"/></div>;

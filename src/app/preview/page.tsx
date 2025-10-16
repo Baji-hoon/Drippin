@@ -3,6 +3,7 @@ import { useState, Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowClockwise } from 'phosphor-react';
 import { blobUrlToFile, fileToBase64 } from '@/lib/utils'; // Assuming utils.ts exists
+import Image from 'next/image';
 
 const fashionTips = [
   "Balance is key. Pair baggy items with something more fitted.",
@@ -98,8 +99,12 @@ useEffect(() => {
       const outfitResult = { imageUrl, ...result };
       sessionStorage.setItem('outfitResult', JSON.stringify(outfitResult));
       router.push('/results');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
       setIsLoading(false);
     }
   };
@@ -120,12 +125,21 @@ useEffect(() => {
     <main style={{ height: '100dvh' }} className="flex items-center justify-center p-4">
       <div className="w-full max-w-sm h-full grid grid-rows-[1fr_auto] bg-white rounded-2xl border-2 border-black shadow-[8px_8px_0px_#000000] overflow-hidden">
         <div className="relative min-h-0">
-          <img src={imageUrl} alt="Outfit Preview" className="w-full h-full object-cover" />
+          <Image
+            src={imageUrl}
+            alt="Outfit Preview"
+            fill
+            className="w-full h-full object-cover"
+            priority
+            onError={(e) => {
+              console.error('Image failed to load:', e);
+            }}
+          />
           {isLoading && (
             <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center text-white p-4 text-center">
               <ArrowClockwise size={48} className="animate-spin mb-4" />
               <p className="text-lg font-semibold mb-2">Analyzing your drip...</p>
-              <p className="text-sm italic transition-opacity duration-500">"{tip}"</p>
+              <p className="text-sm italic transition-opacity duration-500">&quot;{tip}&quot;</p>
             </div>
           )}
         </div>

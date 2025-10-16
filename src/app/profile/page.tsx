@@ -1,5 +1,4 @@
 "use client";
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/contexts/DataContext';
 import { logOut } from '@/lib/supabase';
@@ -7,6 +6,7 @@ import BottomNav from '@/components/BottomNav';
 import ProfileSectionCard from '@/components/ProfileSectionCard';
 import ProfileStatBar from '@/components/ProfileStatBar';
 import { DotsThreeVertical, ArrowClockwise } from 'phosphor-react';
+import Image from 'next/image';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -43,8 +43,14 @@ export default function ProfilePage() {
         
         <div className="w-full bg-white rounded-full border-2 border-black shadow-[4px_4px_0px_#000000] flex items-center p-2 space-x-4">
           <div className="w-16 h-16 rounded-full border-2 border-black overflow-hidden flex-shrink-0">
-             {/* The img tag now uses our robust avatarUrl variable */}
-             <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+            <Image
+              src={avatarUrl}
+              alt={displayName}
+              width={64}
+              height={64}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
           <div className="flex-grow min-w-0">
             {/* The h1 tag now uses our robust displayName variable */}

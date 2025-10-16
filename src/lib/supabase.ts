@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 import { blobUrlToFile, resizeImageForThumbnail } from './utils';
+import type { OutfitResult } from './types';
 
 // Initialize the Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -57,60 +58,19 @@ export interface OutfitResult {
     created_at?: string;
 }
 
-export const saveOutfitResult = async (result: Omit<OutfitResult, 'user_id' | 'id'> & { imageUrl: string }) => {
-  try {
-    // Validate input data
-    const requiredFields = ['imageUrl', 'outfit_vibe', 'look_score', 'look_comment', 'color_score', 'color_comment', 'suggestions', 'observations'];
-    const missingFields = requiredFields.filter(field => result[field as keyof typeof result] === undefined || result[field as keyof typeof result] === null);
-    if (missingFields.length > 0) {
-      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-    }
+type SaveOutfitInput = Omit<OutfitResult, 'id' | 'created_at' | 'user_id'>;
 
-    // Ensure suggestions is an array
-    if (!Array.isArray(result.suggestions)) {
-      throw new Error('Suggestions must be an array of strings');
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('User not authenticated');
-    }
-
-    // Process image
-    let resizedImageUrl: string;
-    try {
-      const imageFile = await blobUrlToFile(result.imageUrl, 'outfit_thumbnail.jpg');
-      resizedImageUrl = await resizeImageForThumbnail(imageFile);
-    } catch (imageError) {
-      throw new Error(`Image processing failed: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`);
-    }
-
-    // Insert into ratings table
-    const { error } = await supabase.from('ratings').insert({
-      user_id: user.id,
-      image_url: resizedImageUrl,
-      outfit_vibe: result.outfit_vibe,
-      look_score: result.look_score,
-      look_comment: result.look_comment,
-      color_score: result.color_score,
-      color_comment: result.color_comment,
-      suggestions: result.suggestions || [],
-      observations: result.observations || '',
+export const saveOutfitResult = async (data: SaveOutfitInput): Promise<void> => {
+  const { error } = await supabase
+    .from('ratings')
+    .insert({
+      ...data,
+      user_id: auth.currentUser?.id,
     });
 
-    if (error) {
-      throw new Error(`Supabase insert failed: ${error.message || 'Unknown error'}, code: ${error.code || 'No code'}, details: ${error.details || 'No details'}`);
-    }
-  } catch (error) {
-    console.error('Error in saveOutfitResult:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      code: error instanceof Error && 'code' in error ? error.code : 'No code',
-      details: error instanceof Error && 'details' in error ? error.details : 'No details',
-    });
-    throw error;
-  }
+  if (error) throw error;
 };
+
 export const getUserRatings = async (): Promise<OutfitResult[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
