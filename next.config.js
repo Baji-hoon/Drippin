@@ -10,15 +10,11 @@ const nextConfig = {
     domains: ['i.ibb.co'],
   },
   typescript: {
-    ignoreBuildErrors: true // Temporarily allow TS errors for deployment
+    ignoreBuildErrors: true
   },
   eslint: {
-    ignoreDuringBuilds: true // Temporarily allow ESLint errors for deployment
+    ignoreDuringBuilds: true
   }
 }
 
-// Add to all pages that fetch data
-export const loading = true;
-export const dynamic = 'force-dynamic';
-
-module.exports = nextConfig
+export default nextConfig
