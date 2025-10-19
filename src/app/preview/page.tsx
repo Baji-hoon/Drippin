@@ -95,8 +95,15 @@ useEffect(() => {
     setError(null);
     try {
       const file = await blobUrlToFile(imageUrl, 'outfit.jpg');
+      // Normalize preview image to data URL to avoid leaking blob URLs downstream
+      const reader = new FileReader();
+      const imageDataUrl: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
       const result = await rateOutfitWithGemini(file);
-      const outfitResult = { imageUrl, ...result };
+      const outfitResult = { imageUrl: imageDataUrl, ...result };
       sessionStorage.setItem('outfitResult', JSON.stringify(outfitResult));
       router.push('/results');
     } catch (err: unknown) {

@@ -32,10 +32,13 @@ export default function ProfilePage() {
     );
   }
 
-  // DEFINITIVE FIX: This logic robustly finds the name and avatar
-  // It checks the custom data from email sign-up first, then falls back to Google's data.
+  // Robust display name and avatar logic with DiceBear fallback
   const displayName = user.user_metadata.display_name || user.user_metadata.full_name || user.email;
-  const avatarUrl = user.user_metadata.avatar_url || "https://i.ibb.co/QjGz5S3/avatar.png";
+  const dicebearFromEmail = (email?: string | null) =>
+    email
+      ? `https://api.dicebear.com/8.x/avataaars-neutral/svg?seed=${encodeURIComponent(email)}`
+      : undefined;
+  const avatarUrl = user.user_metadata.avatar_url || dicebearFromEmail(user.email) || "https://i.ibb.co/QjGz5S3/avatar.png";
 
   return (
     <main className="bg-pastel-beige min-h-screen">
@@ -50,6 +53,7 @@ export default function ProfilePage() {
               height={64}
               className="w-full h-full object-cover"
               priority
+              unoptimized
             />
           </div>
           <div className="flex-grow min-w-0">

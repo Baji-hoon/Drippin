@@ -1,14 +1,15 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { saveOutfitResult } from '@/lib/supabase';
+import { blobUrlToFile } from '@/lib/utils';
 import { useData } from '@/contexts/DataContext';
 import { ArrowClockwise, Lightbulb } from 'phosphor-react';
 import toast from 'react-hot-toast';
 import type { OutfitResult, LocalOutfitResult } from '@/lib/types';
 
-const ResultCard = ({ title, score, comment }: { title: string, score?: number, comment: string }) => {
+const ResultCard = ({ title, score, comment }: { title: string; score?: number; comment: string }) => {
   if (!score) return null;
   const percentage = score * 10;
   return (
@@ -44,63 +45,122 @@ const SuggestionsCard = ({ suggestions }: { suggestions: string[] }) => {
 
 function ResultsComponent() {
   const router = useRouter();
-  const { addOptimisticRating } = useData();
+  const { addOptimisticRating, updateRatingAfterSave, user, loading } = useData();
   const [result, setResult] = useState<LocalOutfitResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const hasSavedRef = useRef(false);
+  const optimisticAddedRef = useRef(false);
+
+  const PENDING_KEY = 'pendingOutfitResults';
+  const enqueuePending = (item: LocalOutfitResult) => {
+    try {
+      const list: LocalOutfitResult[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+      list.push(item);
+      localStorage.setItem(PENDING_KEY, JSON.stringify(list));
+    } catch (e) {
+      console.error('Failed to enqueue pending outfit result', e);
+    }
+  };
+  const dequeueAllPending = (): LocalOutfitResult[] => {
+    try {
+      const list: LocalOutfitResult[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+      localStorage.removeItem(PENDING_KEY);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      localStorage.removeItem(PENDING_KEY);
+      return [];
+    }
+  };
 
   useEffect(() => {
     const storedResult = sessionStorage.getItem('outfitResult');
     if (storedResult) {
       try {
-        const parsedResult = JSON.parse(storedResult);
+        const parsedResult = JSON.parse(storedResult) as LocalOutfitResult;
         setResult(parsedResult);
       } catch (e) {
-        console.error("Failed to parse result from session storage", e);
+        console.error('Failed to parse result from session storage', e);
         router.push('/');
       }
     } else {
       router.push('/');
     }
   }, [router]);
-const retry = async (fn: () => Promise<void>, retries = 3, delay = 1000) => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await fn();
-      return;
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, delay * 2 ** i));
+
+  const retry = async <T,>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+    let lastError: unknown;
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (i === retries - 1) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay * 2 ** i));
+      }
     }
-  }
-};
+  throw lastError as unknown as Error;
+  };
+
+  const ensureDataUrl = async (src: string): Promise<string> => {
+    if (src.startsWith('data:')) return src;
+    if (src.startsWith('blob:')) {
+      const file = await blobUrlToFile(src, 'outfit.jpg');
+      const reader = new FileReader();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      return dataUrl;
+    }
+    return src;
+  };
 
   useEffect(() => {
     if (!result) return;
+    if (loading || !user) return;
+    if (hasSavedRef.current) return;
+    hasSavedRef.current = true;
 
-    const saveResult = async () => {
+    const createOptimistic = (r: LocalOutfitResult): OutfitResult => ({
+      id: Date.now(),
+      image_url: r.imageUrl,
+      created_at: new Date().toISOString(),
+      outfit_vibe: r.outfit_vibe,
+      look_score: r.look_score,
+      look_comment: r.look_comment,
+      color_score: r.color_score,
+      color_comment: r.color_comment,
+      suggestions: r.suggestions || [],
+      observations: r.observations || '',
+    });
+
+    const persist = async () => {
       setIsSaving(true);
-
-      // Create the optimistic result with proper typing
-      const optimisticResult: OutfitResult = {
-        id: Date.now(),
-        image_url: result.imageUrl,
-        created_at: new Date().toISOString(),
-        outfit_vibe: result.outfit_vibe,
-        look_score: result.look_score,
-        look_comment: result.look_comment,
-        color_score: result.color_score,
-        color_comment: result.color_comment,
-        suggestions: result.suggestions || [],
-        observations: result.observations || '',
-      };
-
-      addOptimisticRating(optimisticResult);
-
-      // Background save with retry
       try {
-        await retry(() =>
+  // Use the imageUrl as-is (Preview normalizes to data URL). Avoid fetching blob URLs here to prevent console GET errors.
+  const imageDataUrl = result.imageUrl;
+  setResult((prev) => (prev ? { ...prev, imageUrl: imageDataUrl } : prev));
+  try {
+          const current = sessionStorage.getItem('outfitResult');
+          if (current) {
+            const parsed = JSON.parse(current as string);
+            parsed.imageUrl = imageDataUrl;
+            sessionStorage.setItem('outfitResult', JSON.stringify(parsed));
+          }
+        } catch {}
+
+        let tempId: number | null = null;
+        if (!optimisticAddedRef.current) {
+          optimisticAddedRef.current = true;
+          const optimistic = createOptimistic({ ...result, imageUrl: imageDataUrl });
+          tempId = optimistic.id;
+          addOptimisticRating(optimistic);
+        }
+
+        const saved = await retry(() =>
           saveOutfitResult({
-            image_url: result.imageUrl,
+            image_url: imageDataUrl,
             outfit_vibe: result.outfit_vibe,
             look_score: result.look_score,
             look_comment: result.look_comment,
@@ -110,39 +170,95 @@ const retry = async (fn: () => Promise<void>, retries = 3, delay = 1000) => {
             observations: result.observations || '',
           })
         );
-        toast.success("Outfit saved successfully!");
+
+        if (saved && saved.image_url) {
+          setResult((prev) => (prev ? { ...prev, imageUrl: saved.image_url } : prev));
+          if (tempId != null) updateRatingAfterSave(tempId, saved);
+        }
+        toast.success('Outfit saved successfully!');
+        sessionStorage.removeItem('outfitResult');
       } catch (error: unknown) {
-        let message = "Unknown error";
-        let code = "No code";
-        let details = "No details";
-        let stack = "No stack trace";
-        if (typeof error === "object" && error !== null) {
+        let message = 'Unknown error';
+        let code = 'No code';
+        let details = 'No details';
+        let stack = 'No stack trace';
+        if (typeof error === 'object' && error !== null) {
           message = (error as { message?: string }).message ?? message;
           code = (error as { code?: string }).code ?? code;
           details = (error as { details?: string }).details ?? details;
           stack = (error as { stack?: string }).stack ?? stack;
         }
-        console.error("Failed to save result in background:", {
-          error: error, // Log raw error
+        console.error('Failed to save result in background:', {
+          error,
           message,
           code,
           details,
           stack,
-          result: result, // Log input data for debugging
+          result,
         });
-        toast.error("Failed to save outfit. It has been saved locally and will retry later.");
-        localStorage.setItem('failedOutfitResult', JSON.stringify(result));
-      } finally {
+        console.error('Save error details ->', message, code, details, stack);
+        toast.error('Saving failed. Will retry automatically.');
+        // Ensure we enqueue with data URL to avoid future blob errors
+        const normalized: LocalOutfitResult = {
+          ...result,
+          imageUrl: result.imageUrl.startsWith('data:') ? result.imageUrl : (await ensureDataUrl(result.imageUrl)),
+        };
+        enqueuePending(normalized);
         sessionStorage.removeItem('outfitResult');
+      } finally {
         setIsSaving(false);
       }
     };
 
-    saveResult();
-  }, [addOptimisticRating, result]);
+    persist();
+  }, [result, addOptimisticRating, updateRatingAfterSave, user, loading]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    const flushPending = async () => {
+      const pending = dequeueAllPending();
+      for (const item of pending) {
+        try {
+          // If a stale blob URL slipped into the queue from an older version, skip converting it to avoid console fetch errors
+          if (item.imageUrl.startsWith('blob:')) {
+            enqueuePending(item);
+            continue;
+          }
+          const imageDataUrl = item.imageUrl.startsWith('data:')
+            ? item.imageUrl
+            : await ensureDataUrl(item.imageUrl);
+
+          await retry(() =>
+            saveOutfitResult({
+              image_url: imageDataUrl,
+              outfit_vibe: item.outfit_vibe,
+              look_score: item.look_score,
+              look_comment: item.look_comment,
+              color_score: item.color_score,
+              color_comment: item.color_comment,
+              suggestions: item.suggestions || [],
+              observations: item.observations || '',
+            })
+          );
+        } catch {
+          enqueuePending(item);
+          break;
+        }
+      }
+    };
+
+    flushPending();
+    const onOnline = () => flushPending();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [user, loading]);
 
   if (!result) {
-    return <div className="flex items-center justify-center h-screen bg-pastel-beige"><ArrowClockwise size={48} className="animate-spin"/></div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-pastel-beige">
+        <ArrowClockwise size={48} className="animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -150,6 +266,7 @@ const retry = async (fn: () => Promise<void>, retries = 3, delay = 1000) => {
       <div className="flex justify-center items-start min-h-screen p-4 py-10 pb-24">
         <div className="w-full max-w-sm bg-white rounded-2xl border-2 border-black shadow-[6px_6px_0px_#000000] p-5">
           <div className="w-full h-auto rounded-xl border-2 border-black overflow-hidden mb-5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={result.imageUrl} alt="Rated Outfit" className="w-full h-full object-cover" />
           </div>
           <div id="resultSection" className="space-y-6">
@@ -183,5 +300,9 @@ const retry = async (fn: () => Promise<void>, retries = 3, delay = 1000) => {
 }
 
 export default function ResultsPage() {
-  return <Suspense><ResultsComponent /></Suspense>;
+  return (
+    <Suspense>
+      <ResultsComponent />
+    </Suspense>
+  );
 }

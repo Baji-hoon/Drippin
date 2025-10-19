@@ -15,6 +15,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   colorScore = 0
 }) => {
   const [showModal, setShowModal] = useState(false);
+  const isTemporary = imageUrl?.startsWith('blob:') || imageUrl?.startsWith('data:');
   const validImageUrl = imageUrl || '/placeholder-image.jpg';
 
   const formatScore = (score: number | undefined) => {
@@ -29,18 +30,31 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
           className="relative w-full aspect-[4/3] cursor-pointer"
           onClick={() => setShowModal(true)}
         >
-          <Image
-            src={validImageUrl}
-            alt={`Outfit: ${styleName}`}
-            fill
-            className="object-cover object-top" // Changed to object-top
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            priority
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = '/placeholder-image.jpg';
-            }}
-          />
+          {isTemporary ? (
+            // Next Image cannot preload blob: URLs; use an unoptimized img as a fallback
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={validImageUrl}
+              alt={`Outfit: ${styleName}`}
+              className="absolute inset-0 w-full h-full object-cover object-top"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/placeholder-image.jpg';
+              }}
+            />
+          ) : (
+            <Image
+              src={validImageUrl}
+              alt={`Outfit: ${styleName}`}
+              fill
+              className="object-cover object-top"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              priority
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/placeholder-image.jpg';
+              }}
+            />
+          )}
         </div>
         
         {/* Rating Details Section */}
@@ -77,14 +91,24 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
           onClick={() => setShowModal(false)}
         >
           <div className="relative max-w-4xl w-full h-auto max-h-[90vh]">
-            <Image
-              src={validImageUrl}
-              alt={`Outfit: ${styleName} (Full View)`}
-              width={1200}
-              height={1200}
-              className="w-full h-auto object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
+            {isTemporary ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={validImageUrl}
+                alt={`Outfit: ${styleName} (Full View)`}
+                className="w-full h-auto object-contain rounded-lg"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <Image
+                src={validImageUrl}
+                alt={`Outfit: ${styleName} (Full View)`}
+                width={1200}
+                height={1200}
+                className="w-full h-auto object-contain rounded-lg"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
             <button
               className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg"
               onClick={() => setShowModal(false)}

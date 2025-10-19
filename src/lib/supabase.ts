@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
-import { blobUrlToFile, resizeImageForThumbnail } from './utils';
-import type { OutfitResult } from './types';
+import type { OutfitResult as SharedOutfitResult } from './types';
 
 // Initialize the Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -12,7 +11,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export const signInWithGoogle = () => {
     return supabase.auth.signInWithOAuth({ provider: 'google' });
 };
-export const signUpWithEmail = (email, password, displayName) => {
+export const signUpWithEmail = (email: string, password: string, displayName: string) => {
     // Generate a unique, random avatar URL based on the user's email
     const avatarUrl = `https://api.dicebear.com/8.x/avataaars-neutral/svg?seed=${encodeURIComponent(email)}`;
 
@@ -28,7 +27,7 @@ export const signUpWithEmail = (email, password, displayName) => {
         }
     });
 };
-;export const signInWithEmail = (email, password) => {
+;export const signInWithEmail = (email: string, password: string) => {
     return supabase.auth.signInWithPassword({ email, password });
 };
 export const logOut = () => {
@@ -43,36 +42,28 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
 export type { User };
 
 // --- DATABASE ---
-export interface OutfitResult {
-    id?: number;
-    user_id?: string;
-    image_url: string; 
-    outfit_vibe: string;
-    look_score: number;
-    look_comment: string;
-    color_score: number;
-    color_comment: string;
-    // FIXED: This is now an array of strings
-    suggestions: string[]; 
-    observations: string;
-    created_at?: string;
-}
+type SaveOutfitInput = Omit<SharedOutfitResult, 'id' | 'created_at' | 'user_id'>;
 
-type SaveOutfitInput = Omit<OutfitResult, 'id' | 'created_at' | 'user_id'>;
+export const saveOutfitResult = async (data: SaveOutfitInput): Promise<{ id: number; image_url: string; created_at: string } | void> => {
+    // Ensure we have the currently authenticated user
+    const user = await getCurrentUserWithRetry();
+    if (!user) throw new Error('Not authenticated');
 
-export const saveOutfitResult = async (data: SaveOutfitInput): Promise<void> => {
-  const { error } = await supabase
-    .from('ratings')
-    .insert({
-      ...data,
-      user_id: auth.currentUser?.id,
-    });
+    const { data: inserted, error } = await supabase
+        .from('ratings')
+        .insert({
+            ...data,
+            user_id: user.id,
+        })
+        .select('id,image_url,created_at')
+        .single();
 
-  if (error) throw error;
+    if (error) throw error;
+    return inserted as { id: number; image_url: string; created_at: string };
 };
 
-export const getUserRatings = async (): Promise<OutfitResult[]> => {
-    const { data: { user } } = await supabase.auth.getUser();
+export const getUserRatings = async (): Promise<SharedOutfitResult[]> => {
+    const user = await getCurrentUserWithRetry();
     if (!user) return [];
 
     const { data, error } = await supabase
@@ -82,19 +73,22 @@ export const getUserRatings = async (): Promise<OutfitResult[]> => {
         .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return (data as OutfitResult[]) || [];
+    return (data as SharedOutfitResult[]) || [];
 };
 
-export const calculateUserStats = (ratings: OutfitResult[]) => {
+export const calculateUserStats = (ratings: SharedOutfitResult[]) => {
     if (!ratings || ratings.length === 0) {
         return { totalRatings: 0, averageStyleScore: 0, averageColorScore: 0, styleFrequency: {} };
     }
-    const stats = ratings.reduce((acc, rating) => {
+    const stats = ratings.reduce(
+      (acc: { styleFrequency: Record<string, number>; totalStyleScore: number; totalColorScore: number }, rating) => {
         acc.styleFrequency[rating.outfit_vibe] = (acc.styleFrequency[rating.outfit_vibe] || 0) + 1;
         acc.totalStyleScore += rating.look_score || 0;
         acc.totalColorScore += rating.color_score || 0;
         return acc;
-    }, { styleFrequency: {}, totalStyleScore: 0, totalColorScore: 0 });
+      },
+      { styleFrequency: {}, totalStyleScore: 0, totalColorScore: 0 }
+    );
     return {
         totalRatings: ratings.length,
         averageStyleScore: Number((stats.totalStyleScore / ratings.length).toFixed(1)),
@@ -102,3 +96,20 @@ export const calculateUserStats = (ratings: OutfitResult[]) => {
         styleFrequency: stats.styleFrequency,
     };
 };
+
+// Retry wrapper to handle transient network errors from supabase.auth.getUser()
+async function getCurrentUserWithRetry(retries = 3, delayMs = 500): Promise<User | null> {
+    let lastErr: unknown;
+    for (let i = 0; i < retries; i++) {
+        try {
+            const { data, error } = await supabase.auth.getUser();
+            if (error) throw error;
+            return data?.user ?? null;
+        } catch (e) {
+            lastErr = e;
+            if (i === retries - 1) throw e;
+            await new Promise(res => setTimeout(res, delayMs * (2 ** i)));
+        }
+    }
+    throw lastErr as Error;
+}

@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChange, getUserRatings, calculateUserStats } from '@/lib/supabase';
-import type { User, OutfitResult } from '@/lib/supabase';
+import type { User } from '@/lib/supabase';
 import type { OutfitResult } from '@/lib/types';
 
 // Define the shape of our cache
@@ -19,6 +19,10 @@ interface DataContextType {
   stats: UserStats | null; // Use the specific type here
   loading: boolean;
   addOptimisticRating: (newRating: OutfitResult) => void;
+  updateRatingAfterSave: (
+    tempId: number,
+    saved: { id: number; image_url: string; created_at: string }
+  ) => void;
 }
 const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -55,11 +59,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => subscription?.unsubscribe();
   }, [fetchUserData]); // Added missing dependency
 
-  const addOptimisticRating = (rating: OutfitResult) => {
+  // Memoize to provide a stable reference and avoid re-running consumers' effects unnecessarily
+  const addOptimisticRating = useCallback((rating: OutfitResult) => {
     setRatings(prev => [rating, ...prev]);
-  };
+  }, []);
 
-  const value = { user, ratings, stats, loading, addOptimisticRating };
+  const updateRatingAfterSave = useCallback(
+    (tempId: number, saved: { id: number; image_url: string; created_at: string }) => {
+      setRatings(prev =>
+        prev.map(r =>
+          r.id === tempId ? { ...r, id: saved.id, image_url: saved.image_url, created_at: saved.created_at } : r
+        )
+      );
+    },
+    []
+  );
+
+  const value = { user, ratings, stats, loading, addOptimisticRating, updateRatingAfterSave };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

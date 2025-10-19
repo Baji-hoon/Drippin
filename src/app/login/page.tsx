@@ -35,7 +35,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-pastel-beige">
-      <h1 className="text-5xl font-extrabold text-black mb-8">DRIPPIN</h1>
+      <h1 className="boldonse-regular text-5xl font-extrabold text-black mb-8">DRIPPIN</h1>
       
       <div className="w-full max-w-sm bg-white rounded-2xl border-2 border-black shadow-[8px_8px_0px_#000000] p-8">
         <form onSubmit={handleLogin} className="space-y-4">
