@@ -2,7 +2,9 @@
 import { useState, Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowClockwise } from 'phosphor-react';
-import { blobUrlToFile, fileToBase64 } from '@/lib/utils'; // Assuming utils.ts exists
+import { blobUrlToFile, fileToBase64JpegDownscaled } from '@/lib/utils'; // Assuming utils.ts exists
+import { useData } from '@/contexts/DataContext';
+import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 
 const fashionTips = [
@@ -13,24 +15,28 @@ const fashionTips = [
   "Confidence is your best accessory."
 ];
 
-// This function can remain as it is, it's not part of the problem.
-const rateOutfitWithGemini = async (uploadedFile: File) => {
-    const base64Image = await fileToBase64(uploadedFile);
-    const response = await fetch('/api/rate-outfit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Image, mimeType: uploadedFile.type }),
-    });
-    const result = await response.json();
-    if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to get rating from API');
-    }
-    return result.rating;
+// Compress before sending to reduce payload for serverless limits
+const rateOutfitWithGemini = async (uploadedFile: File, accessToken: string) => {
+  // Downscale to JPEG to keep request body small
+  const { base64, mimeType } = await fileToBase64JpegDownscaled(uploadedFile, 1024, 0.85);
+  const response = await fetch('/api/rate-outfit', {
+    method: 'POST',
+    // Send Supabase access token so API can require auth
+    // Note: we only include Authorization here, not any secrets
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify({ image: base64, mimeType }),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Failed to get rating from API');
+  }
+  return result.rating;
 };
 
 function PreviewComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useData();
   
   // --- ROBUST STATE MANAGEMENT ---
   // We introduce a 'status' to explicitly track our progress.
@@ -91,18 +97,26 @@ useEffect(() => {
 
   const handleRateMyDrip = async () => {
     if (!imageUrl) return;
+    // Enforce login requirement before rating
+    if (!user) {
+      setError('Please log in to rate your outfit.');
+      router.push('/login');
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const file = await blobUrlToFile(imageUrl, 'outfit.jpg');
-      // Normalize preview image to data URL to avoid leaking blob URLs downstream
-      const reader = new FileReader();
-      const imageDataUrl: string = await new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const result = await rateOutfitWithGemini(file);
+      // Normalize preview image to data URL (we prefer storing JPEG consistently)
+      const { base64, mimeType } = await fileToBase64JpegDownscaled(file, 1024, 0.85);
+      const imageDataUrl = `data:${mimeType};base64,${base64}`;
+      // Get Supabase access token for API auth
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+      const result = await rateOutfitWithGemini(file, accessToken);
       const outfitResult = { imageUrl: imageDataUrl, ...result };
       sessionStorage.setItem('outfitResult', JSON.stringify(outfitResult));
       router.push('/results');

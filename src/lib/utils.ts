@@ -63,3 +63,36 @@ export const fileToBase64 = (file: File): Promise<string> => {
         reader.onerror = error => reject(error);
     });
 };
+
+/**
+ * Downscale an image File to JPEG and return the raw base64 (no data: prefix).
+ * Keeps aspect ratio. Default max width 1024 and quality 0.85 greatly reduce payload size for serverless APIs.
+ */
+export const fileToBase64JpegDownscaled = (
+  file: File,
+  maxWidth = 1024,
+  quality = 0.85
+): Promise<{ base64: string; mimeType: 'image/jpeg' }> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const img = new Image();
+      img.src = reader.result as string;
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Could not get canvas context'));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const base64 = dataUrl.split(',')[1];
+        resolve({ base64, mimeType: 'image/jpeg' });
+      };
+      img.onerror = reject;
+    };
+    reader.onerror = reject;
+  });
+};

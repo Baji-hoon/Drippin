@@ -1,10 +1,35 @@
 import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 15; // allow extra time for image+LLM
 
 export async function POST(req: Request) {
   try {
+    // Require authentication using Supabase access token
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    if (!token) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { image, mimeType } = await req.json();
+    // Basic validation: image should be a base64 string (no data: prefix) and reasonable size
+    if (!image || typeof image !== 'string' || /\s/.test(image)) {
+      throw new Error('Invalid image payload');
+    }
+    // Reject very large images to avoid overloading serverless functions
+    const approxBytes = Math.ceil(image.length * 3 / 4);
+    if (approxBytes > 2.5 * 1024 * 1024) { // ~2.5MB
+      throw new Error('Image too large. Please upload a smaller image.');
+    }
     
-    const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    // Use server-side secret only (do not rely on NEXT_PUBLIC here)
+    const API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!API_KEY) {
       throw new Error("Gemini API key is not configured.");
     }
@@ -40,7 +65,8 @@ CRUCIAL RULES:
 
 5. Give 2-3 specific suggestions.
    - Sug 1: Fix the main weakness (e.g., "Tuck in the shirt").
-   - Sug 2: Creative upgrade. MUST be (A) a new layer, (B) a new texture/material, OR (C) a style mix (e.g., "add a formal blazer").
+   - Sug 2: Creative upgrade. MUST be (A) a new layer, (B) a new texture/material, (C) a style mix (e.g., "add a formal blazer", OR (D) PROPORTION: "Wear the [item] in a new way (e.g., 'French tuck') to fix the outfit's shape. (If shape is off).
+    (E) COLOR/CONTRAST: Swap/Add a [specific item] to introduce a 'pop of color' or create a 'tonal' look. (If color is the problem).).
    - Sug 3: A final detail (e.g., "add a silver chain").
    - No vague tips ("add color," "improve fit").
 
@@ -88,8 +114,12 @@ Your response MUST be a single valid JSON object in this exact structure:
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || 'Failed to get rating');
+      let message = 'Failed to get rating';
+      try {
+        const errorData = await response.json();
+        message = errorData.error?.message || message;
+      } catch {}
+      throw new Error(message);
     }
 
     const result = await response.json();
@@ -97,12 +127,33 @@ Your response MUST be a single valid JSON object in this exact structure:
       throw new Error('Invalid response from API');
     }
 
-    const rating = JSON.parse(result.candidates[0].content.parts[0].text);
+    // API returns text with JSON. Guard against trailing text.
+    const rawText: string = result.candidates[0].content.parts[0].text;
+    type Rating = {
+      outfit_vibe: string;
+      look_score: number;
+      look_comment: string;
+      color_score: number;
+      color_comment: string;
+      suggestions: string[];
+      observations: string;
+    };
+    let rating: Rating;
+    try {
+      rating = JSON.parse(rawText) as Rating;
+    } catch {
+      // Attempt to extract JSON object if model added extra text
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Model returned non-JSON response');
+      rating = JSON.parse(match[0]) as Rating;
+    }
     return NextResponse.json({ success: true, rating });
 
   } catch (error: unknown) {
     console.error('API Route Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+    // Map some common issues to 400 to avoid noisy 500s in client
+    const isClient = /Invalid image|too large|not configured|non-JSON/.test(errorMessage);
+    return NextResponse.json({ success: false, error: errorMessage }, { status: isClient ? 400 : 500 });
   }
 }

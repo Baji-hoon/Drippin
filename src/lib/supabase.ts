@@ -105,8 +105,14 @@ async function getCurrentUserWithRetry(retries = 3, delayMs = 500): Promise<User
             const { data, error } = await supabase.auth.getUser();
             if (error) throw error;
             return data?.user ?? null;
-        } catch (e) {
+        } catch (e: unknown) {
             lastErr = e;
+            // Non-fatal path: treat missing/invalid refresh token as "no user" rather than error
+            const msg = (typeof e === 'object' && e && 'message' in e) ? String((e as { message?: string }).message ?? '') : '';
+            if (/Invalid Refresh Token|Refresh Token Not Found|Invalid Refresh/i.test(msg)) {
+                console.warn('Supabase auth: no valid session/refresh token; proceeding as unauthenticated');
+                return null;
+            }
             if (i === retries - 1) throw e;
             await new Promise(res => setTimeout(res, delayMs * (2 ** i)));
         }
