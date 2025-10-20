@@ -1,20 +1,24 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
+    domains: ["pin.it", "api.dicebear.com"],
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: '**',
-      }
+        protocol: "https",
+        hostname: "api.dicebear.com",
+        pathname: "/**",
+      },
     ],
-    domains: ['i.ibb.co'],
+    // In case some avatars remain SVGs in metadata
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   typescript: {
-    ignoreBuildErrors: true
+    ignoreBuildErrors: true,
   },
   eslint: {
-    ignoreDuringBuilds: true
-  }
-}
+    ignoreDuringBuilds: true,
+  },
+};
 
-export default nextConfig
+module.exports = nextConfig;
