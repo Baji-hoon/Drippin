@@ -1,11 +1,33 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 import type { OutfitResult as SharedOutfitResult } from './types';
 
-// Initialize the Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Lazily initialize the Supabase client to avoid throwing during import if envs are missing at build time
+let supabaseClient: SupabaseClient | null = null;
+export function getSupabase(): SupabaseClient {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+        throw new Error('Supabase environment variables are not configured');
+    }
+    if (!supabaseClient) {
+        supabaseClient = createClient(url, key);
+    }
+    return supabaseClient;
+}
+
+// Backward-compatible export that proxies to the lazily created client
+export const supabase = new Proxy({} as SupabaseClient, {
+    get(_target, prop) {
+        const client = getSupabase();
+        // @ts-expect-error dynamic property forwarding
+        const value = client[prop];
+        if (typeof value === 'function') {
+            return value.bind(client);
+        }
+        return value;
+    },
+});
 
 // --- AUTHENTICATION ---
 export const signInWithGoogle = () => {
