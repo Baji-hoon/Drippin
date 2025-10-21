@@ -293,6 +293,11 @@ function ResultsComponent() {
               </button>
             </Link>
           </div>
+          <div className="text-center mt-4">
+            <p className="text-xs text-slate-600">
+              MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
+            </p>
+          </div>
         </div>
       </div>
     </main>

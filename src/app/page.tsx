@@ -74,7 +74,6 @@ export default function UploadPage() {
   return (
     <main 
       className="relative w-full h-screen flex flex-col bg-cover bg-center" 
-      style={{ backgroundImage: "url('/assets/parivartan4.png')" }}
     >
       <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
       <div className="absolute inset-0 bg-pastel-beige/50"></div>
@@ -101,6 +100,11 @@ export default function UploadPage() {
             </Link>
           </div>
         </div>
+      </div>
+      <div className="absolute bottom-20 w-full text-center z-20">
+        <p className="text-xs text-slate-600">
+          MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
+        </p>
       </div>
       <BottomNav />
     </main>
