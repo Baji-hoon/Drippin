@@ -4,6 +4,7 @@ import "./globals.css";
 import AuthWrapper from "@/components/AuthWrapper";
 import { Suspense } from "react";
 import { DataProvider } from "@/contexts/DataContext"; // 1. Import our new provider
+import { boldonse } from "@/lib/fonts";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.className} ${boldonse.variable}`}>
         {/* 2. Wrap the AuthWrapper with the DataProvider */}
         <DataProvider>
           <AuthWrapper>

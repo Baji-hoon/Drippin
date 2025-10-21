@@ -79,7 +79,7 @@ export default function UploadPage() {
       <div className="absolute inset-0 bg-pastel-beige/50"></div>
       <div className="relative z-10 flex-grow flex flex-col justify-center items-center lg:items-start p-8">
         <div className="text-center lg:text-left lg:pl-16">
-          <h1 className="boldonse-regular text-5xl md:text-9xl font-bold text-black tracking-wider">DRIPPIN</h1>
+          <h1 className="font-boldonse text-5xl md:text-9xl font-bold text-black tracking-wider">DRIPPIN</h1>
           <p className="text-slate-700 mt- text-lg"><b>AI</b> feedback on your outfit.</p>
           <p className="text-slate-700 mt-2 mb-8 text-sm"><i>Upload your full outfit for better results.</i>.</p>
           <div className="space-y-4 max-w-xs mx-auto lg:mx-0">
@@ -101,7 +101,7 @@ export default function UploadPage() {
           </div>
         </div>
       </div>
-      <div className="absolute bottom-20 w-full text-center z-20">
+      <div className="absolute bottom-24 w-full text-center z-20">
         <p className="text-xs text-slate-600">
           MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
         </p>

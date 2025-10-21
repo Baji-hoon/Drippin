@@ -9,6 +9,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        boldonse: ['var(--font-boldonse)'],
+      },
       // ADD/UPDATE THIS SECTION
       colors: {
         'pastel-beige': '#fefae0',
