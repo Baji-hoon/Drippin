@@ -5,6 +5,7 @@ import Link from 'next/link'; // Import Link for navigation
 import BottomNav from '@/components/BottomNav';
 import { onAuthStateChange, signInWithGoogle, User } from '@/lib/supabase';
 import { ArrowClockwise } from 'phosphor-react';
+import imageCompression from 'browser-image-compression';
 
 export default function UploadPage() {
   const router = useRouter();
@@ -27,12 +28,34 @@ export default function UploadPage() {
     action();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setIsLoading(true);
-      const imageUrl = URL.createObjectURL(file);
-      router.push(`/preview?imageUrl=${encodeURIComponent(imageUrl)}`);
+      try {
+        let imageFile = file;
+        // Vercel's serverless function payload limit is ~4.5MB.
+        // We'll compress if the file is larger than 3MB to be safe.
+        const sizeLimit = 3 * 1024 * 1024; // 3MB
+
+        if (file.size > sizeLimit) {
+          console.log(`Image size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+          };
+          imageFile = await imageCompression(file, options);
+          console.log(`Image compressed to ${(imageFile.size / 1024 / 1024).toFixed(2)}MB`);
+        }
+
+        const imageUrl = URL.createObjectURL(imageFile);
+        router.push(`/preview?imageUrl=${encodeURIComponent(imageUrl)}`);
+      } catch (error) {
+        console.error('Error processing image:', error);
+        setIsLoading(false);
+        // Optionally, show an error message to the user
+      }
     }
   };
   
