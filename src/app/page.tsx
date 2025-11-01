@@ -22,20 +22,19 @@ export default function SnapPage() {
           stream.getTracks().forEach(track => track.stop());
         }
 
-        // Use dynamic constraints based on viewport size
+        // Use constraints for 3:4 aspect ratio (portrait)
         const constraints: MediaStreamConstraints = {
           video: {
             facingMode: facingMode,
-            width: { ideal: window.innerWidth },
-            height: { ideal: window.innerHeight },
-            aspectRatio: { ideal: window.innerWidth / window.innerHeight },
+            width: { ideal: 1080 },
+            height: { ideal: 1440 }, // 3:4 = 1080:1440
+            aspectRatio: { ideal: 0.75 }, // 3/4
           },
         };
 
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          // Ensure the video element updates its intrinsic size
           videoRef.current.onloadedmetadata = () => {
             if (videoRef.current) {
               videoRef.current.play();
@@ -66,15 +65,35 @@ export default function SnapPage() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // Set canvas to match 3:4 aspect ratio
+      const targetWidth = 1080;
+      const targetHeight = 1440;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const context = canvas.getContext('2d');
       if (context) {
         if (facingMode === 'user') {
-          context.translate(video.videoWidth, 0);
+          context.translate(targetWidth, 0);
           context.scale(-1, 1);
         }
-        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+        // Draw video centered to maintain 3:4 aspect ratio
+        const videoAspect = video.videoWidth / video.videoHeight;
+        let drawWidth = targetWidth;
+        let drawHeight = targetHeight;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (videoAspect > 0.75) {
+          // Video is wider than 3:4, adjust height
+          drawHeight = targetWidth / videoAspect;
+          offsetY = (targetHeight - drawHeight) / 2;
+        } else {
+          // Video is taller than 3:4, adjust width
+          drawWidth = targetHeight * videoAspect;
+          offsetX = (targetWidth - drawWidth) / 2;
+        }
+
+        context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         setImageSrc(dataUrl);
 
@@ -123,12 +142,15 @@ export default function SnapPage() {
                 unoptimized
               />
             ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className={`w-full h-full object-contain ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
-              ></video>
+              <div className="w-full h-full flex items-center justify-center">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full max-h-full object-contain ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                  style={{ aspectRatio: '3/4' }}
+                ></video>
+              </div>
             )}
           </div>
         )}
