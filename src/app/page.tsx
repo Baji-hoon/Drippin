@@ -72,17 +72,16 @@ export default function UploadPage() {
   };
 
   return (
-    <main 
-      className="relative w-full h-screen flex flex-col bg-cover bg-center" 
-    >
+    <main className="bg-pastel-beige min-h-screen flex items-center justify-center">
       <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-      <div className="absolute inset-0 bg-pastel-beige/50"></div>
-      <div className="relative z-10 flex-grow flex flex-col justify-center items-center lg:items-start p-8">
-        <div className="text-center lg:text-left lg:pl-16">
-          <h1 className="font-boldonse text-5xl md:text-9xl font-bold text-black tracking-wider">DRIPPIN</h1>
-          <p className="text-slate-700 mt- text-lg"><b>AI</b> feedback on your outfit.</p>
-          <p className="text-slate-700 mt-2 mb-8 text-sm"><i>Upload your full outfit for better results.</i>.</p>
-          <div className="space-y-4 max-w-xs mx-auto lg:mx-0">
+      
+      <div className="max-w-sm w-full mx-auto flex flex-col justify-center p-4 pb-24">
+        <div className="text-center flex-grow flex flex-col justify-center">
+          <h1 className="boldonse-regular text-5xl font-bold text-black tracking-wider">DRIPPIN</h1>
+          <p className="text-slate-700 mt-2 text-lg"><b>AI OUTFIT RATING</b></p>
+          <p className="text-slate-700 mt-2 mb-8 text-sm"><i>Upload your full outfit for better results.</i></p>
+          
+          <div className="space-y-4">
             <button 
               onClick={() => handleAuthOrAction(() => fileInputRef.current?.click())} 
               disabled={isLoading} 
@@ -100,12 +99,14 @@ export default function UploadPage() {
             </Link>
           </div>
         </div>
+        
+        <div className="mt-auto pt-8 text-center">
+          <p className="text-xs text-slate-600 mt-10">
+            MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
+          </p>
+        </div>
       </div>
-      <div className="absolute bottom-24 w-full text-center z-20">
-        <p className="text-xs text-slate-600">
-          MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
-        </p>
-      </div>
+      
       <BottomNav />
     </main>
   );
