@@ -1,189 +1,109 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ArrowCounterClockwise, X, CameraRotate } from 'phosphor-react';
-import Image from 'next/image';
+import Link from 'next/link';
+import BottomNav from '@/components/BottomNav';
+import { onAuthStateChange, signInWithGoogle, User } from '@/lib/supabase';
+import { ArrowClockwise } from 'phosphor-react';
+import imageCompression from 'browser-image-compression';
 
-export default function SnapPage() {
+export default function UploadPage() {
   const router = useRouter();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-
-  const startCamera = useCallback(async () => {
-    setImageSrc(null);
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        // Stop any existing stream before starting a new one
-        if (videoRef.current && videoRef.current.srcObject) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          stream.getTracks().forEach(track => track.stop());
-        }
-
-        // Use constraints for 3:4 aspect ratio (portrait)
-        const constraints: MediaStreamConstraints = {
-          video: {
-            facingMode: facingMode,
-            width: { ideal: 1080 },
-            height: { ideal: 1440 }, // 3:4 = 1080:1440
-            aspectRatio: { ideal: 0.75 }, // 3/4
-          },
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              videoRef.current.play();
-            }
-          };
-        }
-      } catch (err) {
-        console.error("Camera access error:", err);
-        setError("Camera access was denied. Please enable camera permissions.");
-      }
-    } else {
-      setError("Your browser does not support camera access.");
-    }
-  }, [facingMode]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    startCamera();
-    const videoEl = videoRef.current;
-    return () => {
-      if (videoEl && videoEl.srcObject) {
-        const stream = videoEl.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [startCamera]);
+    const subscription = onAuthStateChange((currentUser) => {
+      setUser(currentUser);
+    });
+    return () => subscription?.unsubscribe();
+  }, []);
 
-  const handleCapture = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      // Set canvas to match 3:4 aspect ratio
-      const targetWidth = 1080;
-      const targetHeight = 1440;
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      const context = canvas.getContext('2d');
-      if (context) {
-        if (facingMode === 'user') {
-          context.translate(targetWidth, 0);
-          context.scale(-1, 1);
-        }
-        // Draw video centered to maintain 3:4 aspect ratio
-        const videoAspect = video.videoWidth / video.videoHeight;
-        let drawWidth = targetWidth;
-        let drawHeight = targetHeight;
-        let offsetX = 0;
-        let offsetY = 0;
+  const handleAuthOrAction = (action: () => void) => {
+    if (!user) {
+      signInWithGoogle().catch(err => console.error("Sign-in error:", err));
+      return;
+    }
+    action();
+  };
 
-        if (videoAspect > 0.75) {
-          // Video is wider than 3:4, adjust height
-          drawHeight = targetWidth / videoAspect;
-          offsetY = (targetHeight - drawHeight) / 2;
-        } else {
-          // Video is taller than 3:4, adjust width
-          drawWidth = targetHeight * videoAspect;
-          offsetX = (targetWidth - drawWidth) / 2;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setIsLoading(true);
+      try {
+        let imageFile = file;
+        const sizeLimit = 3 * 1024 * 1024; // 3MB
+
+        if (file.size > sizeLimit) {
+          console.log(`Image size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+          };
+          imageFile = await imageCompression(file, options);
+          console.log(`Image compressed to ${(imageFile.size / 1024 / 1024).toFixed(2)}MB`);
         }
 
-        context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-        setImageSrc(dataUrl);
-
-        const stream = video.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
+        const imageUrl = URL.createObjectURL(imageFile);
+        router.push(`/preview?imageUrl=${encodeURIComponent(imageUrl)}`);
+      } catch (error) {
+        console.error('Error processing image:', error);
+        setIsLoading(false);
       }
     }
   };
-
-  const handleConfirm = () => {
-    if (imageSrc) {
-      sessionStorage.setItem('capturedImage', imageSrc);
-      router.push(`/preview`);
+  
+  const renderButtonContent = (text: string) => {
+    if (isLoading && text === 'Upload') {
+      return (
+        <span className="flex items-center justify-center">
+          <ArrowClockwise size={24} className="animate-spin mr-2" />
+          Processing...
+        </span>
+      );
     }
-  };
-
-  const toggleCamera = () => {
-    setFacingMode(prevMode => (prevMode === 'user' ? 'environment' : 'user'));
+    return text;
   };
 
   return (
-    <main className="flex flex-col h-[100vh] w-[100vw] bg-black text-white overflow-hidden">
-      {/* Close Button */}
-      <div className="absolute top-4 left-4 z-20">
-        <button onClick={() => router.back()} className="p-2 bg-black/50 rounded-full">
-          <X size={28} />
-        </button>
-      </div>
-
-      <div className="relative flex-grow flex items-center justify-center overflow-hidden">
-        <canvas ref={canvasRef} className="hidden"></canvas>
-        {error ? (
-          <div className="p-8 text-center">
-            <h2 className="text-xl font-bold mb-2">Camera Error</h2>
-            <p>{error}</p>
-          </div>
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            {imageSrc ? (
-              <Image
-                src={imageSrc}
-                alt="Captured outfit"
-                fill
-                className="w-full h-full object-contain"
-                priority
-                unoptimized
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full max-h-full object-contain ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
-                  style={{ aspectRatio: '3/4' }}
-                ></video>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex-shrink-0 p-4 bg-black flex justify-center items-center h-32">
-        {imageSrc ? (
-          <div className="flex w-full justify-around items-center">
-            <button onClick={startCamera} className="flex flex-col items-center text-white p-2">
-              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
-                <ArrowCounterClockwise size={32} />
-              </div>
-              <span className="mt-2 text-sm font-semibold">Retake</span>
+    <main className="bg-pastel-beige min-h-screen flex items-center justify-center">
+      <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+      
+      <div className="max-w-sm w-full mx-auto flex flex-col justify-center p-4 pb-24">
+        <div className="text-center flex-grow flex flex-col justify-center">
+          <h1 className="boldonse-regular text-5xl font-bold text-black tracking-wider">DRIPPIN</h1>
+          <p className="text-slate-700 mt-2 text-lg"><b>AI OUTFIT RATING</b></p>
+          <p className="text-slate-700 mt-2 mb-8 text-sm"><i>Upload your full outfit for better results.</i></p>
+          
+          <div className="space-y-4">
+            <button 
+              onClick={() => handleAuthOrAction(() => fileInputRef.current?.click())} 
+              disabled={isLoading} 
+              className="w-full bg-[#2564EB] text-white font-semibold py-3 px-8 rounded-full border-2 border-black shadow-[4px_4px_0px_#000000] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all disabled:opacity-50"
+            >
+              {renderButtonContent('Upload')}
             </button>
-            <button onClick={handleConfirm} className="flex flex-col items-center text-white p-2">
-              <div className="w-20 h-20 rounded-full bg-blue-500 flex items-center justify-center border-4 border-black ring-2 ring-blue-500">
-                <Check size={40} />
-              </div>
-              <span className="mt-2 text-sm font-semibold">Use Photo</span>
-            </button>
+            <Link href="/snap" passHref className="block">
+              <button 
+                className="w-full bg-white/50 backdrop-blur-md text-black font-semibold py-3 px-8 rounded-full border-2 border-black shadow-[4px_4px_0px_#000000] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+              >
+                Snap
+              </button>
+            </Link>
           </div>
-        ) : (
-          <div className="flex w-full justify-around items-center">
-            <div className="w-16 h-16"></div>
-            <button onClick={handleCapture} className="w-20 h-20 rounded-full bg-white border-4 border-black ring-2 ring-white" aria-label="Take picture"></button>
-            <button onClick={toggleCamera} className="flex flex-col items-center text-white p-2">
-              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
-                <CameraRotate size={32} />
-              </div>
-            </button>
-          </div>
-        )}
+        </div>
+        
+        <div className="mt-auto pt-8 text-center">
+          <p className="text-xs text-slate-600">
+            MADE BY <a href="https://www.instagram.com/main.baji.hoon/" target="_blank" rel="noopener noreferrer" className="font-bold underline hover:text-black">BAJI</a>
+          </p>
+        </div>
       </div>
+      
+      <BottomNav />
     </main>
   );
 }
