@@ -102,14 +102,14 @@ export default function SnapPage() {
         {error ? (
           <div className="p-8 text-center"><h2 className="text-xl font-bold mb-2">Camera Error</h2><p>{error}</p></div>
         ) : (
-          // The container for both video and image to ensure consistent sizing
-          <div className="absolute inset-0 flex items-center justify-center">
+          // New container to enforce aspect ratio
+          <div className="w-full max-w-md mx-auto aspect-[9/16] relative bg-black rounded-lg overflow-hidden shadow-lg">
             {imageSrc ? (
               <Image
                 src={imageSrc}
                 alt="Captured outfit"
-                fill
-                className="w-full h-full object-contain"
+                layout="fill"
+                objectFit="contain"
                 priority
                 unoptimized // Add this for data URLs
               />
