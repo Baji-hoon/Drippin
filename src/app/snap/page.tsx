@@ -22,15 +22,14 @@ export default function SnapPage() {
           stream.getTracks().forEach(track => track.stop());
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: facingMode, 
-            width: { ideal: 1080 }, 
-            height: { ideal: 1920 },
-            // @ts-expect-error - zoom is not in the standard but works on some browsers
-            zoom: 1.0
-          } 
-        });
+const stream = await navigator.mediaDevices.getUserMedia({ 
+  video: { 
+    facingMode: facingMode,
+    // Use 'ideal' without forcing strict dimensions to prevent hardware cropping
+    width: { ideal: 1280 }, 
+    height: { ideal: 720 },
+  } 
+      });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -45,7 +44,7 @@ export default function SnapPage() {
 
   useEffect(() => {
     startCamera();
-    const videoEl = videoRef.current; // Capture the ref value at effect run
+    const videoEl = videoRef.current;
     return () => {
       if (videoEl && videoEl.srcObject) {
         const stream = videoEl.srcObject as MediaStream;
@@ -58,16 +57,25 @@ export default function SnapPage() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      
+      // Use actual video dimensions
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      
+      canvas.width = videoWidth;
+      canvas.height = videoHeight;
+      
       const context = canvas.getContext('2d');
       if (context) {
+        // Apply mirror flip for front camera
         if (facingMode === 'user') {
-            context.translate(video.videoWidth, 0);
-            context.scale(-1, 1);
+          context.translate(videoWidth, 0);
+          context.scale(-1, 1);
         }
-        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9); // High quality JPEG
+        
+        // Draw the video frame directly without scaling
+        context.drawImage(video, 0, 0, videoWidth, videoHeight);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         setImageSrc(dataUrl);
 
         const stream = video.srcObject as MediaStream;
@@ -78,9 +86,8 @@ export default function SnapPage() {
 
   const handleConfirm = () => {
     if (imageSrc) {
-      // FIXED: Store the large image data in sessionStorage instead of the URL
       sessionStorage.setItem('capturedImage', imageSrc);
-      router.push(`/preview`); // Navigate without the massive query parameter
+      router.push(`/preview`);
     }
   };
 
@@ -102,8 +109,7 @@ export default function SnapPage() {
         {error ? (
           <div className="p-8 text-center"><h2 className="text-xl font-bold mb-2">Camera Error</h2><p>{error}</p></div>
         ) : (
-          // New container to enforce aspect ratio
-          <div className="w-full max-w-md mx-auto aspect-[9/16] relative bg-black rounded-lg overflow-hidden shadow-lg">
+          <div className="w-full h-full flex items-center justify-center bg-black">
             {imageSrc ? (
               <Image
                 src={imageSrc}
@@ -111,10 +117,16 @@ export default function SnapPage() {
                 layout="fill"
                 objectFit="contain"
                 priority
-                unoptimized // Add this for data URLs
+                unoptimized
               />
             ) : (
-              <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}></video>
+<video 
+  ref={videoRef} 
+  autoPlay 
+  playsInline 
+  muted
+  className={`w-full h-full object-contain ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+></video>
             )}
           </div>
         )}
@@ -134,7 +146,7 @@ export default function SnapPage() {
           </div>
         ) : (
             <div className="flex w-full justify-around items-center">
-                <div className="w-16 h-16"></div> {/* Placeholder for alignment */}
+                <div className="w-16 h-16"></div>
                 <button onClick={handleCapture} className="w-20 h-20 rounded-full bg-white border-4 border-black ring-2 ring-white" aria-label="Take picture"></button>
                 <button onClick={toggleCamera} className="flex flex-col items-center text-white p-2">
                     <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center"><CameraRotate size={32} /></div>
@@ -142,7 +154,6 @@ export default function SnapPage() {
             </div>
         )}
       </div>
-      {/* The BottomNav has been removed for a full-screen experience */}
     </main>
   );
 }
